@@ -144,9 +144,9 @@ _deps = [
     "tiktoken",
     "timm>=1.0.23",
     "tokenizers>=0.22.0,<=0.23.0",
-    "torch>=2.4",
-    "torchaudio",
-    "torchvision",
+    # "torch>=2.4",
+    # "torchaudio",
+    # "torchvision",
     "pyctcdecode>=0.4.0",
     "tqdm>=4.27",
     "typer",
@@ -174,11 +174,11 @@ def deps_list(*pkgs):
 
 extras = {}
 
-extras["torch"] = deps_list("torch", "accelerate")
-extras["vision"] = deps_list("torchvision", "Pillow")
-extras["audio"] = deps_list("torchaudio", "librosa", "pyctcdecode", "phonemizer")
-if PYTHON_MINOR_VERSION < 13:
-    extras["audio"] += deps_list("kenlm")
+# extras["torch"] = deps_list("torch", "accelerate")
+# extras["vision"] = deps_list("torchvision", "Pillow")
+# extras["audio"] = deps_list("torchaudio", "librosa", "pyctcdecode", "phonemizer")
+# if PYTHON_MINOR_VERSION < 13:
+#     extras["audio"] += deps_list("kenlm")
 extras["video"] = deps_list("av")
 extras["timm"] = deps_list("timm")
 extras["quality"] = deps_list("datasets", "ruff", "GitPython", "urllib3", "libcst", "rich", "ty")
@@ -199,7 +199,8 @@ if PYTHON_MINOR_VERSION < 14:
     extras["ray"] = deps_list("ray[tune]")
     extras["integrations"] += extras["ray"]
 extras["codecarbon"] = deps_list("codecarbon")
-extras["serving"] = deps_list("openai", "pydantic", "uvicorn", "fastapi", "starlette", "rich") + extras["torch"]
+# extras["serving"] = deps_list("openai", "pydantic", "uvicorn", "fastapi", "starlette", "rich") + extras["torch"]
+extras["serving"] = deps_list("openai", "pydantic", "uvicorn", "fastapi", "starlette", "rich")
 extras["num2words"] = deps_list("num2words")
 extras["benchmark"] = deps_list("optimum-benchmark")
 extras["ja"] = deps_list("fugashi", "ipadic", "unidic_lite", "unidic", "rhoknp")
@@ -243,10 +244,10 @@ if PYTHON_MINOR_VERSION < 14:
 
 extras["deepspeed-testing"] = extras["deepspeed"] + extras["testing"] + extras["optuna"] + extras["sentencepiece"]
 extras["all"] = (
-    extras["torch"]
-    + extras["vision"]
-    + extras["audio"]
-    + extras["video"]
+    # extras["torch"]
+    # + extras["vision"]
+    # + extras["audio"]
+    extras["video"]
     + extras["kernels"]
     + extras["timm"]
     + extras["sentencepiece"]
