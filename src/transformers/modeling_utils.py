@@ -33,6 +33,7 @@ from itertools import cycle
 from threading import Thread
 from typing import Optional, TypeVar, get_type_hints
 from zipfile import is_zipfile
+from tqdm import tqdm
 
 import torch
 from huggingface_hub import create_repo, is_offline_mode, split_torch_state_dict_into_shards
@@ -1085,7 +1086,12 @@ class EmbeddingAccessMixin:
             self.lm_head = new_embeddings
 
 
-class PreTrainedModel(nn.Module, EmbeddingAccessMixin, ModuleUtilsMixin, PushToHubMixin, PeftAdapterMixin):
+class PreTrainedModel(
+    nn.Module, 
+    EmbeddingAccessMixin, 
+    ModuleUtilsMixin, 
+    PushToHubMixin, 
+    PeftAdapterMixin):
     r"""
     Base class for all models.
 
@@ -4016,7 +4022,7 @@ class PreTrainedModel(nn.Module, EmbeddingAccessMixin, ModuleUtilsMixin, PushToH
                 "A kernel_config was provided but use_kernels is False; setting use_kernels=True automatically. To suppress this warning, explicitly set use_kernels to True."
             )
             use_kernels = True
-
+        
         checkpoint_files, sharded_metadata = _get_resolved_checkpoint_files(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             variant=variant,
@@ -4202,7 +4208,7 @@ class PreTrainedModel(nn.Module, EmbeddingAccessMixin, ModuleUtilsMixin, PushToH
                 for file in checkpoint_files:
                     file_pointer = safe_open(file, framework="pt", device="cpu")
                     all_pointer.add(file_pointer)
-                    for k in file_pointer.keys():
+                    for k in tqdm(file_pointer.keys(),desc=f'str(file)'):
                         merged_state_dict[k] = file_pointer.get_slice(k)  # don't materialize yet
             # Checkpoints are .bin
             elif checkpoint_files is not None:

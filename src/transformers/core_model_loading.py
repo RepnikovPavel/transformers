@@ -48,6 +48,14 @@ if TYPE_CHECKING:
 logger = logging.get_logger(__name__)
 
 
+def get_tensor_memory_mb(tensor_or_list):
+    """Считает размер тензора или списка тензоров в мегабайтах."""
+    if isinstance(tensor_or_list, torch.Tensor):
+        return tensor_or_list.numel() * tensor_or_list.element_size() / (1024**2)
+    elif isinstance(tensor_or_list, (list, tuple)):
+        return sum(get_tensor_memory_mb(t) for t in tensor_or_list if isinstance(t, torch.Tensor))
+    return 0.0
+
 def build_glob_alternation(
     globs: list[WeightRenaming | WeightConverter | str],
 ) -> tuple[re.Pattern, dict[str, str], dict[str, str]]:
@@ -1214,7 +1222,9 @@ def convert_and_load_state_dict_in_model(
                         loading_info=loading_info,
                     )
                     for target_name, param in realized_value.items():
-                        param = param[0] if isinstance(param, list) else param
+                        if isinstance(param, list):
+                            param = param[0]
+                        
                         param_device = get_device(device_map, target_name)
                         # Offloading support
                         if param_device == "disk" and (target_name not in model_buffers or offload_buffers):
