@@ -715,11 +715,12 @@ class Qwen3Model(Qwen3PreTrainedModel):
             raise NotImplementedError
 
         device_attn_mask = causal_mask_mapping[attention_type_].to(device_)
+        assert self.config.num_hidden_layers==36
         
         for decoder_layer in tqdm(self.layers[: self.config.num_hidden_layers],desc='self.layers forward pass'):
-            print(f'layer weights {get_layer_size_mb(decoder_layer):.0f} MB')
-            print(f'hidden_states {get_tensor_size_mb(hidden_states):.3f} MB')
-            print(f'hidden_states.size() {hidden_states.size()}')
+            # print(f'layer weights {get_layer_size_mb(decoder_layer):.0f} MB')
+            # print(f'hidden_states {get_tensor_size_mb(hidden_states):.3f} MB')
+            # print(f'hidden_states.size() {hidden_states.size()}')
             
             decoder_layer=decoder_layer.to(device_)
             hidden_states=hidden_states.to(device_)
