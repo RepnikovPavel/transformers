@@ -926,8 +926,11 @@ class Qwen3Model(Qwen3PreTrainedModel):
                 print(f'all attn type is {attention_type_}') 
         else:
             raise NotImplementedError
-
-        device_attn_mask = causal_mask_mapping[attention_type_].to(device_,non_blocking=True)
+        if causal_mask_mapping[attention_type_]:
+            device_attn_mask = causal_mask_mapping[attention_type_].to(device_,non_blocking=True)
+        else:
+            device_attn_mask = None
+            
         assert self.config.num_hidden_layers==36
         
         first_chunk = layers[0:chunk_size]
