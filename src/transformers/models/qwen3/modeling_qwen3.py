@@ -47,7 +47,59 @@ from .configuration_qwen3 import Qwen3Config
 
 
 from tqdm import tqdm
+def get_layer_size_mb(layer: nn.Module) -> float:
+    """
+    Вычисляет размер слоя PyTorch в мегабайтах.
+    
+    Учитывает только обучаемые параметры (weights, bias).
+    Размер = (кол-во элементов * размер типа данных) / (1024**2)
+    
+    Args:
+        layer: PyTorch слой (nn.Module)
+    
+    Returns:
+        float: размер в MB
+    """
+    total_bytes = 0
+    for param in layer.parameters():
+        if param.requires_grad:  # только обучаемые параметры
+            total_bytes += param.numel() * param.element_size()
+    
+    return total_bytes / (1024 ** 2)
 
+def get_tensor_size_mb(tensor: torch.Tensor) -> float:
+    """
+    Вычисляет размер PyTorch тензора в мегабайтах.
+    
+    Размер = (кол-во элементов * размер типа данных) / (1024**2)
+    
+    Args:
+        tensor: PyTorch тензор
+    
+    Returns:
+        float: размер в MB
+    """
+    total_bytes = tensor.numel() * tensor.element_size()
+    return total_bytes / (1024 ** 2)
+
+def validate_attention_types(self):
+    """Проверяет, что все attention_type в decoder layers одинаковые.
+    Возвращает (is_uniform: bool, attention_type: str | None)
+    """
+    attention_types = []
+    
+    for decoder_layer in tqdm(self.layers[: self.config.num_hidden_layers], 
+                              desc='validate attention_type'):
+        att_type = decoder_layer.attention_type
+        attention_types.append(att_type)
+    
+    if not attention_types:
+        return False, None
+    
+    first_type = attention_types[0]
+    is_uniform = all(att_type == first_type for att_type in attention_types)
+    
+    return is_uniform, first_type
 
 @use_kernel_forward_from_hub("RMSNorm")
 class Qwen3RMSNorm(nn.Module):
@@ -574,6 +626,10 @@ class Qwen3Model(Qwen3PreTrainedModel):
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         for decoder_layer in tqdm(self.layers[: self.config.num_hidden_layers],desc='self.layers forward pass'):
+            print(f'layer weights {get_layer_size_mb(decoder_layer):.0f} MB')
+            print(f'hidden_states {get_tensor_size_mb(hidden_states):.3f} MB')
+            print(f'hidden_states.size() {hidden_states.size()}')
+            
             hidden_states = decoder_layer(
                 hidden_states,
                 attention_mask=causal_mask_mapping[decoder_layer.attention_type],
@@ -586,6 +642,107 @@ class Qwen3Model(Qwen3PreTrainedModel):
             )
 
         hidden_states = self.norm(hidden_states)
+        # BaseModelOutputWithPast:
+        # last_hidden_state: torch.FloatTensor | None = None
+        # past_key_values: Cache | None = None
+        # hidden_states: tuple[torch.FloatTensor, ...] | None = None
+        # attentions: tuple[torch.FloatTensor, ...] | None = None
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=past_key_values if use_cache else None,
+        )
+
+    def iter_forward_gpu(
+        self,
+        input_ids: torch.LongTensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        use_cache: bool | None = None,
+        cache_position: torch.LongTensor | None = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> BaseModelOutputWithPast:
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache(config=self.config)
+
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
+
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
+        # It may already have been prepared by e.g. `generate`
+        if not isinstance(causal_mask_mapping := attention_mask, dict):
+            # Prepare mask arguments
+            mask_kwargs = {
+                "config": self.config,
+                "inputs_embeds": inputs_embeds,
+                "attention_mask": attention_mask,
+                "cache_position": cache_position,
+                "past_key_values": past_key_values,
+                "position_ids": position_ids,
+            }
+            # Create the masks
+            causal_mask_mapping = {
+                "full_attention": create_causal_mask(**mask_kwargs),
+            }
+            # The sliding window alternating layers are not always activated depending on the config
+            if self.has_sliding_layers:
+                causal_mask_mapping["sliding_attention"] = create_sliding_window_causal_mask(**mask_kwargs)
+
+        hidden_states = inputs_embeds
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        device_ = 'cuda'
+        host_ = 'cpu'
+        device_position_embeddings=[el_.to(device_) for el_ in position_embeddings]
+        device_position_ids=position_ids.to(device_)
+        device_past_key_values=past_key_values.to(device_) if past_key_values is not None else None
+        
+        is_the_same_,attention_type_=validate_attention_types(self)
+        if is_the_same_:
+            print(f'all attn type is {attention_type_}') 
+        else:
+            raise NotImplementedError
+
+        device_attn_mask = causal_mask_mapping[attention_type_].to(device_)
+        
+        for decoder_layer in tqdm(self.layers[: self.config.num_hidden_layers],desc='self.layers forward pass'):
+            print(f'layer weights {get_layer_size_mb(decoder_layer):.0f} MB')
+            print(f'hidden_states {get_tensor_size_mb(hidden_states):.3f} MB')
+            print(f'hidden_states.size() {hidden_states.size()}')
+            
+            decoder_layer=decoder_layer.to(device_)
+            hidden_states=hidden_states.to(device_)
+            hidden_states = decoder_layer(
+                hidden_states,
+                attention_mask=device_attn_mask,
+                position_embeddings=device_position_embeddings,
+                position_ids=device_position_ids,
+                past_key_values=device_past_key_values,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                **kwargs,
+            )
+            decoder_layer=decoder_layer.to(host_)
+            hidden_states=hidden_states.to(host_)
+            
+
+        hidden_states = self.norm(hidden_states)
+        # BaseModelOutputWithPast:
+        # last_hidden_state: torch.FloatTensor | None = None
+        # past_key_values: Cache | None = None
+        # hidden_states: tuple[torch.FloatTensor, ...] | None = None
+        # attentions: tuple[torch.FloatTensor, ...] | None = None
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=past_key_values if use_cache else None,
