@@ -730,10 +730,6 @@ class Qwen3Model(Qwen3PreTrainedModel):
         assert self.config._attn_implementation=='flash_attention_2',self.config._attn_implementation
 
         for decoder_layer in self.layers[: self.config.num_hidden_layers]:
-            # print(f'layer weights {get_layer_size_mb(decoder_layer):.0f} MB')
-            # print(f'hidden_states {get_tensor_size_mb(hidden_states):.3f} MB')
-            # print(f'hidden_states.size() {hidden_states.size()}')
-            
             decoder_layer=decoder_layer.to(device_)
             hidden_states=hidden_states.to(device_)
             hidden_states = decoder_layer(
@@ -937,9 +933,6 @@ class Qwen3Model(Qwen3PreTrainedModel):
         first_chunk = layers[0:chunk_size]
         move_layers_to_device_async(first_chunk, device_)
 
-        load_thread = None
-        offload_thread = None
-        
         if verbose:
             pbar = tqdm(range(0, total_layers, chunk_size), desc='Double Buffered Forward Pass')
         else:
@@ -949,18 +942,17 @@ class Qwen3Model(Qwen3PreTrainedModel):
             next_chunk_idx = i + chunk_size
             next_chunk = layers[next_chunk_idx : next_chunk_idx + chunk_size]
 
-            if len(next_chunk):
+            if len(next_chunk)>0:
                 load_thread = threading.Thread(
                     target=move_layers_to_device_async, 
                     args=(next_chunk, device_)
                 )
                 load_thread.start()
             else:
-                load_thread = None
                 first_chunk = layers[0:chunk_size]
                 move_layers_to_device_async(first_chunk, device_)
 
-            for layer_idx, layer in enumerate(current_chunk):
+            for _, layer in enumerate(current_chunk):
 
                 hidden_states = layer(
                     hidden_states,
