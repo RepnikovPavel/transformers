@@ -124,6 +124,7 @@ CONFIG_MAPPING_NAMES = OrderedDict[str, str](
         ("distilbert", "DistilBertConfig"),
         ("doge", "DogeConfig"),
         ("donut-swin", "DonutSwinConfig"),
+        ("dots_ocr", "DotsOCRConfig"), # whoops
         ("dots1", "Dots1Config"),
         ("dpr", "DPRConfig"),
         ("dpt", "DPTConfig"),
@@ -564,6 +565,7 @@ MODEL_NAMES_MAPPING = OrderedDict[str, str](
         ("doge", "Doge"),
         ("donut-swin", "DonutSwin"),
         ("dots1", "dots1"),
+        ("dots_ocr", "DotsOCR"), # whoops
         ("dpr", "DPR"),
         ("dpt", "DPT"),
         ("edgetam", "EdgeTAM"),
